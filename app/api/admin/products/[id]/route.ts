@@ -5,7 +5,7 @@ import { productSchema } from "@/app/lib/schemas";
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const admin = requireAdmin(request);
 
@@ -39,8 +39,10 @@ export async function PATCH(
     );
   }
 
+  const { id } = await params;
+
   const existing = await prisma.product.findUnique({
-    where: { id: params.id },
+    where: { id },
   });
 
   if (!existing) {
@@ -51,7 +53,7 @@ export async function PATCH(
   }
 
   const updated = await prisma.product.update({
-    where: { id: params.id },
+    where: { id },
     data: validationResult.data,
     include: { category: true },
   });
@@ -64,7 +66,7 @@ export async function PATCH(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const admin = requireAdmin(request);
 
@@ -75,8 +77,10 @@ export async function DELETE(
     );
   }
 
+  const { id } = await params;
+
   const existing = await prisma.product.findUnique({
-    where: { id: params.id },
+    where: { id },
   });
 
   if (!existing) {
@@ -87,7 +91,7 @@ export async function DELETE(
   }
 
   await prisma.product.delete({
-    where: { id: params.id },
+    where: { id },
   });
 
   return NextResponse.json(
