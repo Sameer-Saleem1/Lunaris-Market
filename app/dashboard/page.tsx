@@ -32,6 +32,7 @@ export default function DashboardPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [productsLoading, setProductsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -162,7 +163,8 @@ export default function DashboardPage() {
               products.map((product) => (
                 <div
                   key={product.id}
-                  className="group rounded-3xl border border-white/10 bg-white/5 p-5 transition hover:border-white/30"
+                  onClick={() => setSelectedProduct(product)}
+                  className="group rounded-3xl border border-white/10 bg-white/5 p-5 transition hover:border-white/30 cursor-pointer"
                 >
                   <div className="mb-4 flex items-center justify-between text-xs uppercase tracking-[0.3em] text-white/50">
                     <span>{product.category.name}</span>
@@ -194,7 +196,10 @@ export default function DashboardPage() {
                     <span className="text-lg font-semibold text-white">
                       ${product.price.toFixed(2)}
                     </span>
-                    <button className="rounded-full border border-white/30 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-white transition hover:border-white">
+                    <button
+                      onClick={(e) => e.stopPropagation()}
+                      className="rounded-full border border-white/30 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-white transition hover:border-white"
+                    >
                       Add to cart
                     </button>
                   </div>
@@ -202,6 +207,116 @@ export default function DashboardPage() {
               ))}
           </div>
         </section>
+
+        {/* Product Detail Modal */}
+        {selectedProduct && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4 py-6 overflow-y-auto"
+            onClick={() => setSelectedProduct(null)}
+          >
+            <div
+              className="relative w-full max-w-2xl max-h-[90vh] rounded-3xl border border-white/10 bg-[#0b0d13] p-8 overflow-y-auto my-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Close Button */}
+              <button
+                onClick={() => setSelectedProduct(null)}
+                className="absolute top-4 right-4 rounded-full border border-white/20 p-2 transition hover:border-white/50"
+              >
+                <svg
+                  className="h-5 w-5 text-white"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+
+              <div className="flex flex-col gap-6 pt-6">
+                {/* Product Image */}
+                <div className="aspect-video w-full overflow-hidden rounded-2xl bg-gradient-to-br from-white/10 via-white/5 to-transparent relative">
+                  {selectedProduct.imageUrl ? (
+                    <Image
+                      src={selectedProduct.imageUrl}
+                      alt={selectedProduct.name}
+                      fill
+                      className="object-cover"
+                      sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-5xl font-display text-white/30">
+                      {selectedProduct.name.slice(0, 2).toUpperCase()}
+                    </div>
+                  )}
+                </div>
+
+                {/* Product Details */}
+                <div className="space-y-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h2 className="font-display text-3xl text-white">
+                        {selectedProduct.name}
+                      </h2>
+                      <p className="mt-2 text-sm text-white/50">
+                        Category: {selectedProduct.category.name}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-2xl font-semibold text-white">
+                        ${selectedProduct.price.toFixed(2)}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Description */}
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <h3 className="text-sm uppercase tracking-[0.2em] text-white/50">
+                      Description
+                    </h3>
+                    <p className="mt-2 text-white">
+                      {selectedProduct.description ||
+                        "Crafted to elevate your daily ritual."}
+                    </p>
+                  </div>
+
+                  {/* Stock Information */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <h3 className="text-xs uppercase tracking-[0.2em] text-white/50">
+                        Stock Available
+                      </h3>
+                      <p className="mt-2 text-2xl font-semibold text-white">
+                        {selectedProduct.stock}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <h3 className="text-xs uppercase tracking-[0.2em] text-white/50">
+                        Product ID
+                      </h3>
+                      <p className="mt-2 break-all text-xs font-mono text-white/70">
+                        {selectedProduct.id}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Action Button */}
+                  <button
+                    onClick={() => setSelectedProduct(null)}
+                    className="mt-6 w-full rounded-full border border-white/20 px-6 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-white transition hover:border-white"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

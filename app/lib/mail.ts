@@ -21,8 +21,12 @@ export async function sendVerificationEmail(
   email: string,
   token: string,
   name?: string,
+  baseUrl?: string,
 ): Promise<void> {
-  const verificationUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/verify?token=${token}`;
+  // Use provided baseUrl or fall back to environment variable
+  const appUrl =
+    baseUrl || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const verificationUrl = `${appUrl}/api/auth/verify?token=${token}`;
 
   const mailOptions = {
     from: `"${process.env.EMAIL_FROM_NAME || "E-Commerce App"}" <${process.env.EMAIL_USER}>`,

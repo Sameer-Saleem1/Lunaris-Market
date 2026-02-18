@@ -88,7 +88,22 @@ export async function POST(request: NextRequest) {
 
     // Send verification email via Nodemailer
     try {
-      await sendVerificationEmail(email, verificationToken, name);
+      // Get the origin from request headers for production compatibility
+      let origin: string | undefined;
+
+      // Try to get origin directly first (works in some cases)
+      origin = request.headers.get("origin") || undefined;
+
+      // Fall back to constructing from x-forwarded-proto and host (Vercel proxy headers)
+      if (!origin) {
+        const proto = request.headers.get("x-forwarded-proto");
+        const host = request.headers.get("host");
+        if (proto && host) {
+          origin = `${proto}://${host}`;
+        }
+      }
+
+      await sendVerificationEmail(email, verificationToken, name, origin);
     } catch (emailError) {
       console.error("Failed to send verification email:", emailError);
       // Don't fail the registration if email fails
