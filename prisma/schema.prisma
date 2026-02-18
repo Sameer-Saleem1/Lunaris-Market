@@ -1,0 +1,100 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum RoleType {
+  USER
+  ADMIN
+}
+
+model User{
+  id       String   @id @default(uuid())
+  name      String?
+  email     String   @unique
+  password  String
+  role     RoleType   @default(USER)
+  emailVerified Boolean  @default(false)
+  verificationToken VerificationToken?
+  carts Cart[]
+  orders Order[]
+  createdAt DateTime @default(now())
+}
+
+model Product{
+  id  String @id @default(uuid())
+  name String
+  description String?
+  price Float
+  stock Int
+  imageUrl String?
+  categoryId String
+  category Category @relation(fields: [categoryId], references: [id])
+  CartItem CartItem[]
+  OrderItem OrderItem[]
+  createdAt DateTime @default(now())
+}
+
+model Category{
+  id String @id @default(uuid())
+  name String
+  products Product[]
+  createdAt DateTime @default(now())
+}
+
+model Cart{
+  id String @id @default(uuid())
+  userId String
+  user User @relation(fields: [userId], references: [id])
+  items CartItem[]
+  createdAt DateTime @default(now())
+}
+
+model CartItem{
+  id String @id @default(uuid())
+  cartId String
+  cart Cart @relation(fields: [cartId], references: [id])
+  productId String
+  product Product @relation(fields: [productId], references: [id])
+  quantity Int
+  createdAt DateTime @default(now())
+}
+
+model Order{
+  id String @id @default(uuid())
+  userId String
+  user User @relation(fields: [userId], references: [id])
+  items OrderItem[]
+  total Float
+  createdAt DateTime @default(now())
+}
+
+model OrderItem{
+  id String @id @default(uuid())
+  orderId String
+  order Order @relation(fields: [orderId], references: [id])
+  productId String
+  product Product @relation(fields: [productId], references: [id])
+  quantity Int
+  price Float
+  createdAt DateTime @default(now())
+}
+
+model VerificationToken {
+  id String @id @default(uuid())
+  userId String @unique
+  user User @relation(fields: [userId], references: [id])
+  token String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
