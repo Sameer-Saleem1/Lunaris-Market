@@ -33,6 +33,24 @@ export default function DashboardPage() {
   const [productsLoading, setProductsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
+  const totalPages = Math.max(1, Math.ceil(products.length / itemsPerPage));
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const pagedProducts = products.slice(startIndex, startIndex + itemsPerPage);
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    requestAnimationFrame(() => {
+      const catalog = document.getElementById("catalog");
+      if (catalog) {
+        catalog.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  };
 
   useEffect(() => {
     const loadData = async () => {
@@ -61,6 +79,12 @@ export default function DashboardPage() {
 
     loadData();
   }, [router]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -160,7 +184,7 @@ export default function DashboardPage() {
               </div>
             )}
             {!productsLoading &&
-              products.map((product) => (
+              pagedProducts.map((product) => (
                 <div
                   key={product.id}
                   onClick={() => setSelectedProduct(product)}
@@ -206,6 +230,52 @@ export default function DashboardPage() {
                 </div>
               ))}
           </div>
+
+          {!productsLoading && products.length > itemsPerPage && (
+            <div className="mt-8 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/5 px-5 py-4">
+              <p className="text-xs uppercase tracking-[0.3em] text-white/50">
+                Page {currentPage} of {totalPages}
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
+                  disabled={currentPage === 1}
+                  className="rounded-full border border-white/20 px-4 py-2 text-xs uppercase tracking-[0.2em] text-white disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Prev
+                </button>
+                {Array.from({ length: totalPages }, (_, index) => {
+                  const pageNumber = index + 1;
+                  const isActive = pageNumber === currentPage;
+                  return (
+                    <button
+                      key={pageNumber}
+                      type="button"
+                      onClick={() => handlePageChange(pageNumber)}
+                      className={`h-9 w-9 rounded-full border text-xs font-semibold transition ${
+                        isActive
+                          ? "border-white bg-white text-[#0b0d13]"
+                          : "border-white/20 text-white hover:border-white/60"
+                      }`}
+                    >
+                      {pageNumber}
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() =>
+                    handlePageChange(Math.min(totalPages, currentPage + 1))
+                  }
+                  disabled={currentPage === totalPages}
+                  className="rounded-full border border-white/20 px-4 py-2 text-xs uppercase tracking-[0.2em] text-white disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </section>
 
         {/* Product Detail Modal */}
