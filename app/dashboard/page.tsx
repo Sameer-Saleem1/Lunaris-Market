@@ -33,12 +33,29 @@ export default function DashboardPage() {
   const [productsLoading, setProductsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [cartQuantity, setCartQuantity] = useState(0);
+  const [cartItems, setCartItems] = useState<Record<string, number>>({});
+  const [cartItemStock, setCartItemStock] = useState<Record<string, number>>(
+    {},
+  );
+  const [cartLoading, setCartLoading] = useState(true);
+  const [cartError, setCartError] = useState<string | null>(null);
+  const [addingProductId, setAddingProductId] = useState<string | null>(null);
+  const [updatingProductId, setUpdatingProductId] = useState<string | null>(
+    null,
+  );
+  const [cartOpen, setCartOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
   const totalPages = Math.max(1, Math.ceil(products.length / itemsPerPage));
   const startIndex = (currentPage - 1) * itemsPerPage;
   const pagedProducts = products.slice(startIndex, startIndex + itemsPerPage);
+  const cartProducts = products.filter((product) => cartItems[product.id]);
+  const cartTotal = cartProducts.reduce(
+    (total, product) => total + product.price * cartItems[product.id],
+    0,
+  );
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
@@ -68,12 +85,44 @@ export default function DashboardPage() {
         const productsRes = await fetch("/api/products");
         const productsData = await productsRes.json();
         setProducts(productsData.data || []);
+
+        const cartRes = await fetch("/api/cart");
+        if (cartRes.ok) {
+          const cartData = await cartRes.json();
+          const items = cartData.data?.items ?? [];
+          const itemMap = items.reduce(
+            (
+              acc: Record<string, number>,
+              item: { productId: string; quantity: number },
+            ) => {
+              acc[item.productId] = item.quantity;
+              return acc;
+            },
+            {},
+          );
+          const stockMap = items.reduce(
+            (
+              acc: Record<string, number>,
+              item: { productId: string; product?: { stock?: number } },
+            ) => {
+              if (typeof item.product?.stock === "number") {
+                acc[item.productId] = item.product.stock;
+              }
+              return acc;
+            },
+            {},
+          );
+          setCartItems(itemMap);
+          setCartItemStock(stockMap);
+          setCartQuantity(cartData.data?.totalQuantity ?? 0);
+        }
       } catch (err) {
         setError(
           err instanceof Error ? err.message : "Unable to load your dashboard.",
         );
       } finally {
         setProductsLoading(false);
+        setCartLoading(false);
       }
     };
 
@@ -89,6 +138,156 @@ export default function DashboardPage() {
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
     router.push("/login");
+  };
+
+  const handleAddToCart = async (product: Product) => {
+    if (product.stock <= 0) {
+      return;
+    }
+
+    const prevCartItems = { ...cartItems };
+    const prevCartQuantity = cartQuantity;
+    const prevCartItemStock = { ...cartItemStock };
+    const prevItemQty = cartItems[product.id] ?? 0;
+    const nextItemQty = prevItemQty + 1;
+
+    setCartItems((prev) => ({ ...prev, [product.id]: nextItemQty }));
+    setCartQuantity(prevCartQuantity + 1);
+    if (cartItemStock[product.id] === undefined) {
+      setCartItemStock((prev) => ({ ...prev, [product.id]: product.stock }));
+    }
+
+    setAddingProductId(product.id);
+    setCartError(null);
+
+    try {
+      const response = await fetch("/api/cart", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productId: product.id, quantity: 1 }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Unable to add to cart.");
+      }
+
+      const item = data.data?.item as
+        | { productId: string; quantity: number; product?: { stock?: number } }
+        | undefined;
+
+      if (item) {
+        setCartItems((prev) => ({
+          ...prev,
+          [item.productId]: item.quantity,
+        }));
+        const stockValue = item.product?.stock;
+        if (typeof stockValue === "number") {
+          setCartItemStock((prev) => ({
+            ...prev,
+            [item.productId]: stockValue,
+          }));
+        }
+      }
+
+      if (typeof data.data?.totalQuantity === "number") {
+        setCartQuantity(data.data.totalQuantity);
+      }
+    } catch (err) {
+      setCartItems(prevCartItems);
+      setCartQuantity(prevCartQuantity);
+      setCartItemStock(prevCartItemStock);
+      setCartError(
+        err instanceof Error ? err.message : "Unable to add to cart.",
+      );
+    } finally {
+      setAddingProductId(null);
+    }
+  };
+
+  const handleUpdateCartItem = async (productId: string, quantity: number) => {
+    const prevCartItems = { ...cartItems };
+    const prevCartQuantity = cartQuantity;
+    const prevCartItemStock = { ...cartItemStock };
+    const prevItemQty = cartItems[productId] ?? 0;
+    const nextItemQty = Math.max(0, quantity);
+    const nextCartQuantity = prevCartQuantity + (nextItemQty - prevItemQty);
+
+    setCartItems((prev) => {
+      if (nextItemQty <= 0) {
+        const next = { ...prev };
+        delete next[productId];
+        return next;
+      }
+
+      return { ...prev, [productId]: nextItemQty };
+    });
+    setCartQuantity(Math.max(0, nextCartQuantity));
+
+    setUpdatingProductId(productId);
+    setCartError(null);
+
+    try {
+      const response = await fetch("/api/cart", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productId, quantity }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Unable to update cart.");
+      }
+
+      const item = data.data?.item as
+        | { productId: string; quantity: number; product?: { stock?: number } }
+        | null
+        | undefined;
+      const removedProductId = data.data?.removedProductId as
+        | string
+        | null
+        | undefined;
+
+      if (removedProductId) {
+        setCartItems((prev) => {
+          const next = { ...prev };
+          delete next[removedProductId];
+          return next;
+        });
+        setCartItemStock((prev) => {
+          const next = { ...prev };
+          delete next[removedProductId];
+          return next;
+        });
+      } else if (item) {
+        setCartItems((prev) => ({
+          ...prev,
+          [item.productId]: item.quantity,
+        }));
+        const stockValue = item.product?.stock;
+        if (typeof stockValue === "number") {
+          setCartItemStock((prev) => ({
+            ...prev,
+            [item.productId]: stockValue,
+          }));
+        }
+      }
+
+      if (typeof data.data?.totalQuantity === "number") {
+        setCartQuantity(data.data.totalQuantity);
+      }
+    } catch (err) {
+      setCartItems(prevCartItems);
+      setCartQuantity(prevCartQuantity);
+      setCartItemStock(prevCartItemStock);
+      setCartError(
+        err instanceof Error ? err.message : "Unable to update cart.",
+      );
+    } finally {
+      setUpdatingProductId(null);
+    }
   };
 
   if (error) {
@@ -138,6 +337,13 @@ export default function DashboardPage() {
                 Admin panel
               </Link>
             )}
+            <button
+              type="button"
+              onClick={() => setCartOpen(true)}
+              className="rounded-full border border-white/20 px-5 py-2 text-sm text-white/80"
+            >
+              Cart {cartLoading ? "..." : `${cartQuantity} items`}
+            </button>
             <Link
               href="/dashboard#catalog"
               className="rounded-full border border-white/20 px-5 py-2 text-sm"
@@ -171,6 +377,12 @@ export default function DashboardPage() {
               Explore catalog
             </Link>
           </div>
+
+          {cartError && (
+            <div className="mt-4 rounded-2xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+              {cartError}
+            </div>
+          )}
 
           <div className="mt-6 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {productsLoading && (
@@ -221,10 +433,22 @@ export default function DashboardPage() {
                       ${product.price.toFixed(2)}
                     </span>
                     <button
-                      onClick={(e) => e.stopPropagation()}
-                      className="rounded-full border border-white/30 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-white transition hover:border-white"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleAddToCart(product);
+                      }}
+                      disabled={
+                        addingProductId === product.id || product.stock <= 0
+                      }
+                      className="rounded-full border border-white/30 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-white transition hover:border-white disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      Add to cart
+                      {product.stock <= 0
+                        ? "Out of stock"
+                        : addingProductId === product.id
+                          ? "Adding..."
+                          : cartItems[product.id]
+                            ? `Add another (${cartItems[product.id]})`
+                            : "Add to cart"}
                     </button>
                   </div>
                 </div>
@@ -383,6 +607,159 @@ export default function DashboardPage() {
                     Close
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {cartOpen && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4 py-6 overflow-y-auto"
+            onClick={() => setCartOpen(false)}
+          >
+            <div
+              className="relative w-full max-w-3xl max-h-[90vh] rounded-3xl border border-white/10 bg-[#0b0d13] p-8 overflow-y-auto my-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                onClick={() => setCartOpen(false)}
+                className="absolute top-4 right-4 rounded-full border border-white/20 p-2 transition hover:border-white/50"
+              >
+                <svg
+                  className="h-5 w-5 text-white"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+
+              <div className="space-y-6 pt-6">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <h2 className="font-display text-2xl">Your cart</h2>
+                    <p className="text-sm text-white/60">
+                      Review the pieces you have saved for checkout.
+                    </p>
+                  </div>
+                  <div className="rounded-full border border-white/20 px-5 py-2 text-xs uppercase tracking-[0.2em] text-white">
+                    {cartLoading ? "Loading" : `${cartQuantity} items`}
+                  </div>
+                </div>
+
+                {cartError && (
+                  <div className="rounded-2xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+                    {cartError}
+                  </div>
+                )}
+
+                <div className="grid gap-4">
+                  {cartLoading && (
+                    <div className="rounded-3xl border border-white/10 bg-white/5 p-10 text-center text-white/70">
+                      Loading cart...
+                    </div>
+                  )}
+                  {!cartLoading && cartProducts.length === 0 && (
+                    <div className="rounded-3xl border border-white/10 bg-white/5 p-10 text-center text-white/70">
+                      Your cart is empty. Add something from the catalog.
+                    </div>
+                  )}
+                  {!cartLoading &&
+                    cartProducts.map((product) => (
+                      <div
+                        key={product.id}
+                        className="flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-white/10 bg-white/5 p-5"
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className="relative h-20 w-24 overflow-hidden rounded-2xl bg-gradient-to-br from-white/10 via-white/5 to-transparent">
+                            {product.imageUrl ? (
+                              <Image
+                                src={product.imageUrl}
+                                alt={product.name}
+                                fill
+                                className="object-cover"
+                                sizes="96px"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center text-lg font-display text-white/60">
+                                {product.name.slice(0, 2).toUpperCase()}
+                              </div>
+                            )}
+                          </div>
+                          <div>
+                            <p className="text-sm uppercase tracking-[0.2em] text-white/50">
+                              {product.category.name}
+                            </p>
+                            <h3 className="font-display text-xl text-white">
+                              {product.name}
+                            </h3>
+                            <div className="mt-2 flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleUpdateCartItem(
+                                    product.id,
+                                    cartItems[product.id] - 1,
+                                  )
+                                }
+                                disabled={
+                                  updatingProductId === product.id ||
+                                  cartItems[product.id] <= 0
+                                }
+                                className="h-8 w-8 rounded-full border border-white/30 text-sm font-semibold text-white transition hover:border-white disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                -
+                              </button>
+                              <span className="min-w-[2rem] text-center text-sm text-white/70">
+                                {cartItems[product.id]}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleUpdateCartItem(
+                                    product.id,
+                                    cartItems[product.id] + 1,
+                                  )
+                                }
+                                disabled={
+                                  updatingProductId === product.id ||
+                                  cartItems[product.id] >=
+                                    (cartItemStock[product.id] ?? 0)
+                                }
+                                className="h-8 w-8 rounded-full border border-white/30 text-sm font-semibold text-white transition hover:border-white disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                +
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm text-white/50">Subtotal</p>
+                          <p className="text-lg font-semibold text-white">
+                            $
+                            {(product.price * cartItems[product.id]).toFixed(2)}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+
+                {!cartLoading && cartProducts.length > 0 && (
+                  <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/5 px-5 py-4">
+                    <p className="text-xs uppercase tracking-[0.3em] text-white/50">
+                      Cart total
+                    </p>
+                    <p className="text-2xl font-semibold text-white">
+                      ${cartTotal.toFixed(2)}
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
