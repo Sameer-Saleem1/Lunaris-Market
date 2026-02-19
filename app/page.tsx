@@ -1,4 +1,6 @@
 import Link from "next/link";
+
+export const revalidate = 60;
 export default function Home() {
   return (
     <div className="min-h-screen bg-[#0b0d13] text-white">
@@ -10,6 +12,9 @@ export default function Home() {
               Lunaris Market
             </div>
             <div className="flex items-center gap-6">
+              <Link href="/catalog" className="hover:text-white">
+                Catalog
+              </Link>
               <Link href="/login" className="hover:text-white">
                 Sign in
               </Link>

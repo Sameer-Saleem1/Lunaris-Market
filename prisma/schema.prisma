@@ -75,6 +75,11 @@ model Order{
   userId String
   user User @relation(fields: [userId], references: [id])
   items OrderItem[]
+  subtotal Float
+  tax Float
+  shipping Float
+  discount Float
+  couponCode String?
   total Float
   createdAt DateTime @default(now())
 }

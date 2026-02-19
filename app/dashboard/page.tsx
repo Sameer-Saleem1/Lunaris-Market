@@ -751,13 +751,29 @@ export default function DashboardPage() {
                 </div>
 
                 {!cartLoading && cartProducts.length > 0 && (
-                  <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/5 px-5 py-4">
-                    <p className="text-xs uppercase tracking-[0.3em] text-white/50">
-                      Cart total
-                    </p>
-                    <p className="text-2xl font-semibold text-white">
-                      ${cartTotal.toFixed(2)}
-                    </p>
+                  <div className="space-y-4 rounded-2xl border border-white/10 bg-white/5 px-5 py-4">
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      <p className="text-xs uppercase tracking-[0.3em] text-white/50">
+                        Cart total
+                      </p>
+                      <p className="text-2xl font-semibold text-white">
+                        ${cartTotal.toFixed(2)}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-3">
+                      <Link
+                        href="/cart"
+                        className="rounded-full border border-white/30 px-5 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-white transition hover:border-white"
+                      >
+                        View cart
+                      </Link>
+                      <Link
+                        href="/checkout"
+                        className="rounded-full bg-white px-5 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#0b0d13]"
+                      >
+                        Checkout
+                      </Link>
+                    </div>
                   </div>
                 )}
               </div>

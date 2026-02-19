@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
 import { getAuthPayload } from "@/app/lib/auth-session";
+import { calculateCartTotals } from "@/app/lib/pricing";
 
 const DEFAULT_QUANTITY = 1;
 
@@ -30,6 +31,8 @@ const parseUpdateQuantity = (value: unknown): number | null => {
 
 export async function GET(request: NextRequest) {
   const payload = getAuthPayload(request);
+  const { searchParams } = new URL(request.url);
+  const couponCode = searchParams.get("coupon");
 
   if (!payload) {
     return NextResponse.json(
@@ -47,7 +50,14 @@ export async function GET(request: NextRequest) {
           productId: true,
           quantity: true,
           product: {
-            select: { stock: true },
+            select: {
+              id: true,
+              name: true,
+              price: true,
+              imageUrl: true,
+              stock: true,
+              category: { select: { name: true } },
+            },
           },
         },
       },
@@ -56,6 +66,7 @@ export async function GET(request: NextRequest) {
 
   const items = cart?.items ?? [];
   const totalQuantity = items.reduce((total, item) => total + item.quantity, 0);
+  const totals = calculateCartTotals(items, couponCode);
 
   return NextResponse.json(
     {
@@ -63,6 +74,7 @@ export async function GET(request: NextRequest) {
       data: {
         items,
         totalQuantity,
+        totals,
       },
     },
     { status: 200 },
