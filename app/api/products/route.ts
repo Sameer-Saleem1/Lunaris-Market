@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
 
+export const revalidate = 60;
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const query = searchParams.get("q")?.trim();
@@ -22,5 +24,12 @@ export async function GET(request: NextRequest) {
     orderBy: { createdAt: "desc" },
   });
 
-  return NextResponse.json({ success: true, data: products }, { status: 200 });
+  const response = NextResponse.json(
+    { success: true, data: products },
+    { status: 200 },
+  );
+
+  response.headers.set("Cache-Control", "s-maxage=60, stale-while-revalidate=300");
+
+  return response;
 }
