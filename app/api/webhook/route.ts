@@ -1,6 +1,7 @@
 import { stripe } from "@/app/lib/stripe";
 import { Stripe } from "stripe";
 import { prisma } from "@/app/lib/prisma";
+import { sendOrderConfirmationEmail } from "@/app/lib/mail";
 
 const finalizeOrder = async (session: Stripe.Checkout.Session) => {
   const orderId = session.metadata?.orderId;
@@ -11,7 +12,10 @@ const finalizeOrder = async (session: Stripe.Checkout.Session) => {
 
   const order = await prisma.order.findUnique({
     where: { id: orderId },
-    include: { items: true },
+    include: {
+      items: true,
+      user: true,
+    },
   });
 
   if (!order || order.paymentStatus === "PAID") {
@@ -51,6 +55,50 @@ const finalizeOrder = async (session: Stripe.Checkout.Session) => {
         where: { cart: { userId: order.userId } },
       });
     });
+
+    // Fetch the updated order with all details for email
+    const updatedOrder = await prisma.order.findUnique({
+      where: { id: order.id },
+      include: {
+        items: {
+          include: {
+            product: true,
+          },
+        },
+        user: true,
+      },
+    });
+
+    if (updatedOrder && updatedOrder.user.email) {
+      // Send order confirmation email
+      try {
+        await sendOrderConfirmationEmail(
+          updatedOrder.user.email,
+          updatedOrder.user.name,
+          {
+            orderId: updatedOrder.id,
+            items: updatedOrder.items.map((item) => ({
+              name: item.product.name,
+              quantity: item.quantity,
+              price: item.price,
+            })),
+            subtotal: updatedOrder.subtotal,
+            tax: updatedOrder.tax,
+            shipping: updatedOrder.shipping,
+            discount: updatedOrder.discount,
+            total: updatedOrder.total,
+            paidAt: updatedOrder.paidAt!,
+            couponCode: updatedOrder.couponCode,
+          },
+        );
+        console.log(
+          `Order confirmation email sent to ${updatedOrder.user.email}`,
+        );
+      } catch (emailError) {
+        // Log the error but don't fail the order
+        console.error("Failed to send order confirmation email:", emailError);
+      }
+    }
   } catch (error) {
     console.error("Stripe fulfillment error:", error);
 
