@@ -48,6 +48,11 @@ EMAIL_FROM_NAME="E-Commerce App"
 
 # Public app URL (used in verification links)
 NEXT_PUBLIC_APP_URL="http://localhost:3000"
+
+# Stripe payments
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY="pk_test_..."
+STRIPE_SECRET_KEY="sk_test_..."
+STRIPE_WEBHOOK_SECRET="whsec_..."
 ```
 
 ### Database Setup
