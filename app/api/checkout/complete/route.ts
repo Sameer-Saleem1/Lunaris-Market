@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthPayload } from "@/app/lib/auth-session";
 import { prisma } from "@/app/lib/prisma";
 import { stripe } from "@/app/lib/stripe";
+import { sendOrderConfirmationEmail } from "@/app/lib/mail";
 
 /**
  * Manual payment completion endpoint for local testing without webhooks
@@ -53,7 +54,10 @@ export async function POST(request: NextRequest) {
     // Verify order belongs to user
     const order = await prisma.order.findFirst({
       where: { id: orderId, userId: payload.userId },
-      include: { items: true },
+      include: {
+        items: true,
+        user: true,
+      },
     });
 
     if (!order) {
@@ -132,6 +136,50 @@ export async function POST(request: NextRequest) {
         where: { cart: { userId: order.userId } },
       });
     });
+
+    // Fetch the updated order with all details for email
+    const updatedOrder = await prisma.order.findUnique({
+      where: { id: order.id },
+      include: {
+        items: {
+          include: {
+            product: true,
+          },
+        },
+        user: true,
+      },
+    });
+
+    // Send order confirmation email
+    if (updatedOrder && updatedOrder.user.email) {
+      try {
+        await sendOrderConfirmationEmail(
+          updatedOrder.user.email,
+          updatedOrder.user.name,
+          {
+            orderId: updatedOrder.id,
+            items: updatedOrder.items.map((item) => ({
+              name: item.product.name,
+              quantity: item.quantity,
+              price: item.price,
+            })),
+            subtotal: updatedOrder.subtotal,
+            tax: updatedOrder.tax,
+            shipping: updatedOrder.shipping,
+            discount: updatedOrder.discount,
+            total: updatedOrder.total,
+            paidAt: updatedOrder.paidAt!,
+            couponCode: updatedOrder.couponCode,
+          },
+        );
+        console.log(
+          `Order confirmation email sent to ${updatedOrder.user.email}`,
+        );
+      } catch (emailError) {
+        // Log the error but don't fail the order
+        console.error("Failed to send order confirmation email:", emailError);
+      }
+    }
 
     return NextResponse.json(
       {
