@@ -21,6 +21,7 @@ function CheckoutContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialCoupon = searchParams.get("coupon");
+  const canceled = searchParams.get("canceled");
 
   const [items, setItems] = useState<CartItem[]>([]);
   const [totals, setTotals] = useState<CartTotals | null>(null);
@@ -108,12 +109,19 @@ function CheckoutContent() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || "Unable to place order.");
+        throw new Error(data.message || "Unable to start checkout.");
       }
 
-      router.push(`/orders/${data.data.orderId}`);
+      const redirectUrl = data.data?.url as string | undefined;
+      if (!redirectUrl) {
+        throw new Error("Missing Stripe redirect URL.");
+      }
+
+      window.location.assign(redirectUrl);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to place order.");
+      setError(
+        err instanceof Error ? err.message : "Unable to start checkout.",
+      );
     } finally {
       setPlacingOrder(false);
     }
@@ -148,6 +156,12 @@ function CheckoutContent() {
           </div>
         </header>
 
+        {canceled && (
+          <div className="rounded-2xl border border-amber-300/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+            Payment was canceled. Your cart is still saved.
+          </div>
+        )}
+
         {error && (
           <div className="rounded-2xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
             {error}
@@ -168,107 +182,139 @@ function CheckoutContent() {
           )}
 
           {!loading && items.length > 0 && (
-            <div className="space-y-6">
-              <div className="grid gap-4">
-                {items.map((item) => (
-                  <div
-                    key={item.productId}
-                    className="flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-white/10 bg-white/5 p-5"
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="relative h-20 w-24 overflow-hidden rounded-2xl bg-gradient-to-br from-white/10 via-white/5 to-transparent">
-                        {item.product.imageUrl ? (
-                          <Image
-                            src={item.product.imageUrl}
-                            alt={item.product.name}
-                            fill
-                            className="object-cover"
-                            sizes="96px"
-                          />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center text-lg font-display text-white/60">
-                            {item.product.name.slice(0, 2).toUpperCase()}
-                          </div>
-                        )}
+            <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs uppercase tracking-[0.3em] text-white/50">
+                    Items in bag
+                  </p>
+                  <p className="text-xs text-white/60">Review before you pay</p>
+                </div>
+                <div className="grid gap-4">
+                  {items.map((item) => (
+                    <div
+                      key={item.productId}
+                      className="flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-white/10 bg-white/5 p-5"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="relative h-20 w-24 overflow-hidden rounded-2xl bg-gradient-to-br from-white/10 via-white/5 to-transparent">
+                          {item.product.imageUrl ? (
+                            <Image
+                              src={item.product.imageUrl}
+                              alt={item.product.name}
+                              fill
+                              className="object-cover"
+                              sizes="96px"
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-lg font-display text-white/60">
+                              {item.product.name.slice(0, 2).toUpperCase()}
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <h3 className="font-display text-xl text-white">
+                            {item.product.name}
+                          </h3>
+                          <p className="text-xs text-white/60">
+                            Qty {item.quantity} · $
+                            {item.product.price.toFixed(2)}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <h3 className="font-display text-xl text-white">
-                          {item.product.name}
-                        </h3>
-                        <p className="text-xs text-white/60">
-                          Qty {item.quantity} · ${item.product.price.toFixed(2)}
+                      <div className="text-right">
+                        <p className="text-sm text-white/50">Subtotal</p>
+                        <p className="text-lg font-semibold text-white">
+                          ${(item.product.price * item.quantity).toFixed(2)}
                         </p>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="text-sm text-white/50">Subtotal</p>
-                      <p className="text-lg font-semibold text-white">
-                        ${(item.product.price * item.quantity).toFixed(2)}
-                      </p>
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
 
-              {totals && (
-                <div className="space-y-4 rounded-2xl border border-white/10 bg-white/5 p-5">
-                  <div className="grid gap-2 text-sm text-white/70">
+              <div className="space-y-5">
+                {totals && (
+                  <div className="rounded-3xl border border-white/10 bg-gradient-to-b from-white/10 to-white/5 p-6">
                     <div className="flex items-center justify-between">
-                      <span>Subtotal</span>
-                      <span>${totals.subtotal.toFixed(2)}</span>
+                      <p className="text-xs uppercase tracking-[0.3em] text-white/50">
+                        Order total
+                      </p>
+                      <p className="text-xs text-emerald-200">
+                        Secure via Stripe
+                      </p>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span>Discount</span>
-                      <span>-${totals.discount.toFixed(2)}</span>
+                    <div className="mt-4 grid gap-2 text-sm text-white/70">
+                      <div className="flex items-center justify-between">
+                        <span>Subtotal</span>
+                        <span>${totals.subtotal.toFixed(2)}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>Discount</span>
+                        <span>-${totals.discount.toFixed(2)}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>Shipping</span>
+                        <span>${totals.shipping.toFixed(2)}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span>Tax</span>
+                        <span>${totals.tax.toFixed(2)}</span>
+                      </div>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span>Shipping</span>
-                      <span>${totals.shipping.toFixed(2)}</span>
+                    <div className="mt-4 flex flex-wrap items-center justify-between gap-4 border-t border-white/10 pt-4">
+                      <p className="text-xs uppercase tracking-[0.3em] text-white/50">
+                        Total
+                      </p>
+                      <p className="text-2xl font-semibold text-white">
+                        ${totals.total.toFixed(2)}
+                      </p>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span>Tax</span>
-                      <span>${totals.tax.toFixed(2)}</span>
+                    <div className="mt-4 flex flex-wrap items-center gap-3">
+                      <input
+                        value={couponInput}
+                        onChange={(event) => setCouponInput(event.target.value)}
+                        placeholder="Coupon code"
+                        className="h-10 flex-1 rounded-full border border-white/20 bg-transparent px-4 text-sm text-white placeholder:text-white/40 focus:border-white focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleApplyCoupon}
+                        className="rounded-full border border-white/30 px-5 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-white transition hover:border-white"
+                      >
+                        Apply
+                      </button>
+                      {appliedCoupon && (
+                        <span className="text-xs text-emerald-200">
+                          Applied {appliedCoupon}
+                        </span>
+                      )}
                     </div>
                   </div>
-                  <div className="flex flex-wrap items-center justify-between gap-4 border-t border-white/10 pt-4">
-                    <p className="text-xs uppercase tracking-[0.3em] text-white/50">
-                      Total
-                    </p>
-                    <p className="text-2xl font-semibold text-white">
-                      ${totals.total.toFixed(2)}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <input
-                      value={couponInput}
-                      onChange={(event) => setCouponInput(event.target.value)}
-                      placeholder="Coupon code"
-                      className="h-10 flex-1 rounded-full border border-white/20 bg-transparent px-4 text-sm text-white placeholder:text-white/40 focus:border-white focus:outline-none"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleApplyCoupon}
-                      className="rounded-full border border-white/30 px-5 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-white transition hover:border-white"
-                    >
-                      Apply
-                    </button>
-                    {appliedCoupon && (
-                      <span className="text-xs text-emerald-200">
-                        Applied {appliedCoupon}
-                      </span>
-                    )}
+                )}
+
+                <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
+                  <p className="text-sm text-white/70">
+                    You will complete payment on Stripe's secure checkout. We
+                    never store your card details.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handlePlaceOrder}
+                    disabled={placingOrder}
+                    className="mt-4 w-full rounded-full bg-white px-6 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-[#0b0d13] transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {placingOrder
+                      ? "Redirecting to Stripe..."
+                      : "Pay with Stripe"}
+                  </button>
+                  <div className="mt-4 flex items-center justify-between text-xs text-white/50">
+                    <span>SSL encrypted</span>
+                    <span>PCI compliant</span>
+                    <span>Instant receipt</span>
                   </div>
                 </div>
-              )}
-
-              <button
-                type="button"
-                onClick={handlePlaceOrder}
-                disabled={placingOrder}
-                className="w-full rounded-full bg-white px-6 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-[#0b0d13] transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                {placingOrder ? "Placing order..." : "Place order"}
-              </button>
+              </div>
             </div>
           )}
         </section>

@@ -25,6 +25,8 @@ type Order = {
   discount: number;
   couponCode?: string | null;
   total: number;
+  status: string;
+  paymentStatus: string;
   createdAt: string;
   items: OrderItem[];
 };
@@ -102,6 +104,9 @@ export default function OrderConfirmationPage() {
             <h1 className="font-display text-4xl">Thank you for your order</h1>
             <p className="text-sm text-white/60">
               Placed {new Date(order.createdAt).toLocaleString()}
+            </p>
+            <p className="mt-2 text-xs uppercase tracking-[0.3em] text-emerald-200">
+              Payment {order.paymentStatus}
             </p>
           </div>
           <Link

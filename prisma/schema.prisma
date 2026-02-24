@@ -18,6 +18,21 @@ enum RoleType {
   ADMIN
 }
 
+enum OrderStatus {
+  PENDING
+  PAID
+  FULFILLED
+  CANCELED
+  FAILED
+}
+
+enum PaymentStatus {
+  UNPAID
+  PAID
+  REFUNDED
+  FAILED
+}
+
 model User{
   id       String   @id @default(uuid())
   name      String?
@@ -81,6 +96,12 @@ model Order{
   discount Float
   couponCode String?
   total Float
+  status OrderStatus @default(PENDING)
+  paymentStatus PaymentStatus @default(UNPAID)
+  stripeSessionId String?
+  stripePaymentIntentId String?
+  stripeCustomerId String?
+  paidAt DateTime?
   createdAt DateTime @default(now())
 }
 

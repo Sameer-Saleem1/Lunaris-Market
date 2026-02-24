@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
 import { getAuthPayload } from "@/app/lib/auth-session";
 import { calculateCartTotals } from "@/app/lib/pricing";
+import { stripe } from "@/app/lib/stripe";
 
 const parseCouponCode = (value: unknown): string | null => {
   if (!value || typeof value !== "string") {
@@ -48,6 +49,7 @@ export async function POST(request: NextRequest) {
           product: {
             select: {
               id: true,
+              name: true,
               price: true,
               stock: true,
             },
@@ -64,60 +66,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const totals = calculateCartTotals(cart.items, couponCode);
-
-  try {
-    const order = await prisma.$transaction(async (tx) => {
-      for (const item of cart.items) {
-        const updated = await tx.product.updateMany({
-          where: {
-            id: item.productId,
-            stock: { gte: item.quantity },
-          },
-          data: { stock: { decrement: item.quantity } },
-        });
-
-        if (updated.count === 0) {
-          throw new Error("STOCK_UNAVAILABLE");
-        }
-      }
-
-      const createdOrder = await tx.order.create({
-        data: {
-          userId: payload.userId,
-          subtotal: totals.subtotal,
-          tax: totals.tax,
-          shipping: totals.shipping,
-          discount: totals.discount,
-          couponCode: totals.couponCode,
-          total: totals.total,
-          items: {
-            create: cart.items.map((item) => ({
-              productId: item.productId,
-              quantity: item.quantity,
-              price: item.product.price,
-            })),
-          },
-        },
-      });
-
-      await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
-
-      return createdOrder;
-    });
-
-    return NextResponse.json(
-      {
-        success: true,
-        data: {
-          orderId: order.id,
-          totals,
-        },
-      },
-      { status: 200 },
-    );
-  } catch (error) {
-    if (error instanceof Error && error.message === "STOCK_UNAVAILABLE") {
+  for (const item of cart.items) {
+    if (item.product.stock < item.quantity) {
       return NextResponse.json(
         {
           success: false,
@@ -126,11 +76,119 @@ export async function POST(request: NextRequest) {
         { status: 409 },
       );
     }
+  }
 
+  const totals = calculateCartTotals(cart.items, couponCode);
+  const origin =
+    request.headers.get("origin") ?? process.env.NEXT_PUBLIC_APP_URL;
+
+  if (!origin) {
+    return NextResponse.json(
+      { success: false, message: "Missing app URL configuration." },
+      { status: 500 },
+    );
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: payload.userId },
+    select: { email: true },
+  });
+
+  try {
+    const order = await prisma.order.create({
+      data: {
+        userId: payload.userId,
+        subtotal: totals.subtotal,
+        tax: totals.tax,
+        shipping: totals.shipping,
+        discount: totals.discount,
+        couponCode: totals.couponCode,
+        total: totals.total,
+        status: "PENDING",
+        paymentStatus: "UNPAID",
+        items: {
+          create: cart.items.map((item) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+            price: item.product.price,
+          })),
+        },
+      },
+    });
+
+    let sessionUrl: string | null = null;
+
+    try {
+      const session = await stripe.checkout.sessions.create({
+        mode: "payment",
+        line_items: [
+          {
+            price_data: {
+              currency: "usd",
+              product_data: {
+                name: "Lunaris Market Order",
+                description: `${cart.items.length} item${
+                  cart.items.length === 1 ? "" : "s"
+                }`,
+              },
+              unit_amount: Math.round(totals.total * 100),
+            },
+            quantity: 1,
+          },
+        ],
+        success_url: `${origin}/return?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${origin}/checkout?canceled=1`,
+        customer_email: user?.email ?? undefined,
+        metadata: {
+          orderId: order.id,
+          userId: payload.userId,
+        },
+        payment_intent_data: {
+          metadata: {
+            orderId: order.id,
+            userId: payload.userId,
+          },
+        },
+      });
+
+      sessionUrl = session.url ?? null;
+
+      await prisma.order.update({
+        where: { id: order.id },
+        data: { stripeSessionId: session.id },
+      });
+    } catch (error) {
+      await prisma.order.update({
+        where: { id: order.id },
+        data: { status: "FAILED", paymentStatus: "FAILED" },
+      });
+
+      throw error;
+    }
+
+    if (!sessionUrl) {
+      return NextResponse.json(
+        { success: false, message: "Unable to start checkout." },
+        { status: 500 },
+      );
+    }
+
+    return NextResponse.json(
+      {
+        success: true,
+        data: {
+          orderId: order.id,
+          totals,
+          url: sessionUrl,
+        },
+      },
+      { status: 200 },
+    );
+  } catch (error) {
     console.error("Checkout error:", error);
 
     return NextResponse.json(
-      { success: false, message: "Unable to place order." },
+      { success: false, message: "Unable to start checkout." },
       { status: 500 },
     );
   }
